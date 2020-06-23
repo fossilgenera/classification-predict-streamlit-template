@@ -1,25 +1,18 @@
 """
-
     Simple Streamlit webserver application for serving developed classification
 	models.
-
     Author: Explore Data Science Academy.
-
     Note:
     ---------------------------------------------------------------------
     Plase follow the instructions provided within the README.md file
     located within this directory for guidance on how to use this script
     correctly.
     ---------------------------------------------------------------------
-
     Description: This file is used to launch a minimal streamlit web
 	application. You are expected to extend the functionality of this script
 	as part of your predict project.
-
 	For further help with the Streamlit framework, see:
-
 	https://docs.streamlit.io/en/latest/
-
 """
 # Streamlit dependencies
 import streamlit as st
@@ -27,6 +20,20 @@ import joblib,os
 
 # Data dependencies
 import pandas as pd
+import re
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# NLP packages
+import nltk
+from nltk.stem import WordNetLemmatizer
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('wordnet')
+from nltk.corpus import stopwords
+stop_words = set(stopwords.words('english'))
+from nltk import ngrams
+import collections
 
 # Vectorizer
 news_vectorizer = open("resources/tfidfvect.pkl","rb")
@@ -41,42 +48,351 @@ def main():
 
 	# Creates a main title and subheader on your page -
 	# these are static across all pages
-	st.title("Tweet Classifer")
-	st.subheader("Climate change tweet classification")
+	st.write("# Climate Change Tweet Classifer")
 
 	# Creating sidebar with selection box -
 	# you can create multiple pages this way
-	options = ["Prediction", "Information"]
+	options = ["Home page", "Prediction", "Comparison of categories", "Analysis of each category"]
 	selection = st.sidebar.selectbox("Choose Option", options)
 
-	# Building out the "Information" page
-	if selection == "Information":
-		st.info("General Information")
-		# You can read a markdown file from supporting resources folder
-		st.markdown("Some information here")
+	# Building out the Home page
+	if selection == "Home page":
+		st.write("Identifying your audience's stance on climate change" +
+				 " may reveal important insights about them, such as their " +
+				 "personal values, their political inclination, and web behaviour.")
+		st.write("This tool allows you to imput sample text from your target audience "+
+				 " and select a machine learning model to predict whether the author of "+
+				 " that text")
+		st.write("* Believes in climate change")
+		st.write("* Denies climate change")
+		st.write("* Is neutral about climate change")
+		st.write("* Provided a factual link to a news site")
+		st.write("You can also view an exploratory analysis about each category to gain deeper insights "+
+				 "about each category.")
+		st.write("Select Prediction in the side bar to get started.")
 
-		st.subheader("Raw Twitter data and label")
+	# Building out the "Comparison of categories" page
+	if selection == "Comparison of categories":
+		st.write("## Comparison of categories")
+		st.write("The model predicts the text to be classed into one of four categories:")
+		st.write("* Denies climate change (-1)")
+		st.write("* Is neutral about climate change (0)")
+		st.write("* Believes in climate change (1)")
+		st.write("* Provided a factual link to a news site (2)")
+		st.write("You can view the raw data used to train the models at the bottom of the page.")
+
+		# Count of each category
+		st.write("### Count of each category")
+		fig = sns.countplot(x='sentiment', data = raw, palette='rainbow')
+		st.pyplot()
+		st.write(raw['sentiment'].value_counts())
+		st.write("The training data contained more tweets from climate change believers"+
+				 " than any other group which implies that there may be more information"+
+				 " available about this group than others.")
+
+		st.subheader("Raw Twitter data")
+		st.write("The raw Twitter data that was used to train the models.")
 		if st.checkbox('Show raw data'): # data is hidden if box is unchecked
 			st.write(raw[['sentiment', 'message']]) # will write the df to the page
+		
 
-	# Building out the predication page
+	# Building out the prediction page
 	if selection == "Prediction":
-		st.info("Prediction with ML Models")
+		st.info("1. Enter a sample text of your audience in the box below\n " +
+				"2. Select the algorithm used to classify your text\n"+
+				"3. Click on 'Predict' to get your prediction\n\n"+
+				"To learn more about each group, please explore the options in the sidebar.")
 		# Creating a text box for user input
-		tweet_text = st.text_area("Enter Text","Type Here")
+		tweet_text = st.text_area("Enter text","Type Here")
 
-		if st.button("Classify"):
-			# Transforming user input with vectorizer
-			vect_text = tweet_cv.transform([tweet_text]).toarray()
-			# Load your .pkl file with the model of your choice + make predictions
-			# Try loading in multiple models to give the user a choice
-			predictor = joblib.load(open(os.path.join("resources/Logistic_regression.pkl"),"rb"))
-			prediction = predictor.predict(vect_text)
+		def _preprocess(tweet):
+			lowercase = tweet.lower()
+			without_handles = re.sub(r'@', r'', lowercase)
+			without_hashtags = re.sub(r'#', '', without_handles)
+			without_URL = re.sub(r'http[^ ]+', '', without_hashtags)
+			without_URL1 = re.sub(r'www.[^ ]+', '', without_URL)    
+			return without_URL1
+		
+		tweet_text = _preprocess(tweet_text)
+		
+		# Allow user to select algorithm
+		algorithm = st.selectbox("Select an algorithm to make the prediction",
+							['Support Vector Classifier', 'Random Forest',
+							'Logistic Regression'])
+		
+		# Classify using SVC
+		if algorithm=='Support Vector Classifier':
+			if st.button("Predict using Support Vector Classifier"):
+				# Transforming user input with vectorizer
+				#vect_text = tweet_cv.transform([tweet_text]).toarray()
+				# Load your .pkl file with the model of your choice + make predictions
+				# Try loading in multiple models to give the user a choice
+				predictor = joblib.load(open(os.path.join("resources/support_vector.pkl"),"rb"))
+				tweet_text = [tweet_text]
+				prediction = predictor.predict(tweet_text)
 
-			# When model has successfully run, will print prediction
-			# You can use a dictionary or similar structure to make this output
-			# more human interpretable.
-			st.success("Text Categorized as: {}".format(prediction))
+				# When model has successfully run, will print prediction
+				# You can use a dictionary or similar structure to make this output
+				# more human interpretable.
+				if prediction == 0:
+					st.success('Neutral. Select "Analysis of each category" in the sidebar for more informatio about this category'+
+							   ' or select "Comparison of categories.".')
+				if prediction == -1:
+					st.success('Climate change denier. Select "Analysis of each category" in the sidebar for more information about'+
+							   ' this category or select "Comparison of categories."')
+				if prediction == 2:
+					st.success('Provides link to factual news source. Select "Analysis of each category" in the sidebar for more'+
+							   ' information about this category or select "Comparison of categories."')
+				if prediction == 1:
+					st.success('Climate change believer. Select "Analysis of each category" in the sidebar for more information'+
+							   ' about this category or select "Comparison of categories."')
+
+		# Classify using Random Forest
+		if algorithm=='Random Forest':
+			if st.button("Predict using Random Forest"):
+				# Transforming user input with vectorizer
+				#vect_text = tweet_cv.transform([tweet_text]).toarray()
+				# Load your .pkl file with the model of your choice + make predictions
+				# Try loading in multiple models to give the user a choice
+				predictor = joblib.load(open(os.path.join("resources/rf_model1.pkl"),"rb"))
+				tweet_text = [tweet_text]
+				prediction = predictor.predict(tweet_text)
+
+				# When model has successfully run, will print prediction
+				# You can use a dictionary or similar structure to make this output
+				# more human interpretable.
+				if prediction == 0:
+					st.success('Neutral. Select "Analysis of each category" in the sidebar for more informatio about this category'+
+							   ' or select "Comparison of categories."')
+				if prediction == -1:
+					st.success('Climate change denier. Select "Analysis of each category" in the sidebar for more information about'+
+							   ' this category or select "Comparison of categories."')
+				if prediction == 2:
+					st.success('Provides link to factual news source. Select "Analysis of each category" in the sidebar for more'+
+							   ' information about this category or select "Comparison of categories."')
+				if prediction == 1:
+					st.success('Climate change believer. Select "Analysis of each category" in the sidebar for more information'+
+							   ' about this category or select "Comparison of categories."')
+
+		# Classify using Logistic Regression
+		if algorithm=='Logistic Regression':
+			if st.button("Predict using Logistic Regression"):
+				# Transforming user input with vectorizer
+				#vect_text = tweet_cv.transform([tweet_text]).toarray()
+				# Load your .pkl file with the model of your choice + make predictions
+				# Try loading in multiple models to give the user a choice
+				predictor = joblib.load(open(os.path.join("resources/log_model.pkl"),"rb"))
+				tweet_text = [tweet_text]
+				prediction = predictor.predict(tweet_text)
+
+				# When model has successfully run, will print prediction
+				# You can use a dictionary or similar structure to make this output
+				# more human interpretable.
+				if prediction == 0:
+					st.success('Neutral. Select "Analysis of each category" in the sidebar for more informatio about this category'+
+							   ' or select "Comparison of categories."')
+				st.success('Climate change denier. Select "Analysis of each category" in the sidebar for more information about'+
+							   ' this category or select "Comparison of categories."')
+				if prediction == 2:
+					st.success('Provides link to factual news source. Select "Analysis of each category" in the sidebar for more'+
+							   ' information about this category or select "Comparison of categories."')
+				if prediction == 1:
+					st.success('Climate change believer. Select "Analysis of each category" in the sidebar for more information'+
+							   ' about this category or select "Comparison of categories."')
+
+	#----------------------------------------#
+	# Functions for analysis of twitter data
+	#----------------------------------------#
+	# 1) N-grams count
+	# 2) Word count
+	# 3) Length of tweet
+	# 4) Average word length
+
+	# 1) N-GRAMS COUNT
+	raw_analysis = raw.copy()
+	lem = WordNetLemmatizer()
+
+	# Normalization
+	def normalizer(tweet):
+		tweet_no_url = re.sub(r'http[^ ]+', '', tweet) # Remove URLs beginning with http
+		tweet_no_url1 = re.sub(r'www.[^ ]+', '', tweet_no_url) # Remove URLs beginning with http
+		only_letters = re.sub("[^a-zA-Z]", " ",tweet_no_url1)  # Remove punctuation
+		tokens = nltk.word_tokenize(only_letters) # Tokenization
+		lower_case = [l.lower() for l in tokens] # Lowercase
+		filtered_result = list(filter(lambda l: l not in stop_words, lower_case))
+		lemmas = [lem.lemmatize(t) for t in filtered_result] 
+		return lemmas
+	raw_analysis['normalized'] = raw_analysis['message'].apply(normalizer)
+
+	# Return bigrams and trigrams
+	def ngrams(input_list):
+		bigrams = [' '.join(t) for t in list(zip(input_list, input_list[1:]))]
+		trigrams = [' '.join(t) for t in list(zip(input_list, input_list[1:], input_list[2:]))]
+		return bigrams+trigrams
+	raw_analysis['grams'] = raw_analysis['normalized'].apply(ngrams)
+
+	# Count bigrams and trigrams
+	def count_words(input):
+		cnt = collections.Counter()
+		for row in input:
+			for word in row:
+				cnt[word] += 1
+		return cnt
+	
+	dictionary = {}
+
+	# Isolate each category's ngrams
+	ngrams_deniers_tup = raw_analysis[(raw_analysis.sentiment == -1)][['grams']].apply(count_words)['grams'].most_common(20)
+	ngrams_believers_tup = raw_analysis[(raw_analysis.sentiment == 1)][['grams']].apply(count_words)['grams'].most_common(20)
+	ngrams_neutrals_tup = raw_analysis[(raw_analysis.sentiment == 0)][['grams']].apply(count_words)['grams'].most_common(20)
+	ngrams_factuals_tup = raw_analysis[(raw_analysis.sentiment == 2)][['grams']].apply(count_words)['grams'].most_common(20)
+
+	def tuples_to_dict(tup, di): 
+		"""
+		Convert a list of tuples into a dictionary
+		"""
+		di = dict(tup) 
+		return di 
+	
+	# Create dictionary of ngrams for each category and then convert to dataframe
+	ngrams_deniers = tuples_to_dict(ngrams_deniers_tup, dictionary)
+	ngrams_deniers = pd.DataFrame(ngrams_deniers.items(), columns = ['Ngram', 'Count'])
+
+	ngrams_believers = tuples_to_dict(ngrams_believers_tup, dictionary)
+	ngrams_believers = pd.DataFrame(ngrams_believers.items(), columns = ['Ngram', 'Count'])
+
+	ngrams_neutrals = tuples_to_dict(ngrams_neutrals_tup, dictionary)
+	ngrams_neutrals = pd.DataFrame(ngrams_neutrals.items(), columns = ['Ngram', 'Count'])
+
+	ngrams_factuals = tuples_to_dict(ngrams_factuals_tup, dictionary)
+	ngrams_factuals = pd.DataFrame(ngrams_factuals.items(), columns = ['Ngram', 'Count'])
+
+
+	# 2) WORD COUNT
+	def word_count(tweet):
+		"""
+		Function to return the number of words in a tweet.
+		Input: A tweet (str)
+		Output: Number of words in that tweet (int)
+		"""
+		return len(tweet.split())
+	raw_analysis['word_count'] = raw_analysis['message'].apply(word_count)
+	word_count_believers = raw_analysis[raw_analysis['sentiment'] == 1]['word_count']
+	avg_word_count_believers = word_count_believers.mean()
+
+	word_count_deniers = raw_analysis[raw_analysis['sentiment'] == -1]['word_count']
+	avg_word_count_deniers = word_count_deniers.mean()
+
+	word_count_neutrals = raw_analysis[raw_analysis['sentiment'] == 0]['word_count']
+	avg_word_count_neutrals = word_count_neutrals.mean()
+
+	word_count_factuals = raw_analysis[raw_analysis['sentiment'] == 2]['word_count']
+	avg_word_count_factuals = word_count_factuals.mean()
+
+	# 3) LENGTH OF TWEET
+	def length_of_tweet(tweet):
+		"""
+		Function to return the number of characters in that tweet.
+		Input: A tweet (str)
+		Output: Number of characters in that tweet (int)
+		"""
+		return len(tweet)
+	raw_analysis['tweet_length'] = raw_analysis['message'].apply(length_of_tweet)
+
+	t_length_believers = raw_analysis[raw_analysis['sentiment'] == 1]['tweet_length']
+	avg_t_length_believers = t_length_believers.mean()
+
+	t_length_deniers = raw_analysis[raw_analysis['sentiment'] == -1]['tweet_length']
+	avg_t_length_deniers = t_length_deniers.mean()
+
+	t_length_neutrals = raw_analysis[raw_analysis['sentiment'] == 0]['tweet_length']
+	avg_t_length_neutrals = t_length_neutrals.mean()
+
+	t_length_factuals = raw_analysis[raw_analysis['sentiment'] == 2]['tweet_length']
+	avg_t_length_factuals = t_length_factuals.mean()
+
+	# 4) AVERAGE WORD LENGTH
+	def average_word_length(tweet):
+		"""
+		Function to return the average length of all the words
+		in a tweet.
+		Input: A tweet (str)
+		Output: Average word length (float)
+		"""
+		words = tweet.split()
+		average = sum(len(word) for word in words) / len(words)
+		return round(average, 2)
+	raw_analysis['avg_word_length'] = raw_analysis['message'].apply(average_word_length)
+
+	w_length_believers = raw_analysis[raw_analysis['sentiment'] == 1]['avg_word_length']
+	avg_w_length_believers = w_length_believers.mean()
+
+	w_length_deniers = raw_analysis[raw_analysis['sentiment'] == -1]['avg_word_length']
+	avg_w_length_deniers = w_length_deniers.mean()
+
+	w_length_neutrals = raw_analysis[raw_analysis['sentiment'] == 0]['avg_word_length']
+	avg_w_length_neutrals = w_length_neutrals.mean()
+
+	w_length_factuals = raw_analysis[raw_analysis['sentiment'] == 2]['avg_word_length']
+	avg_w_length_factuals = w_length_factuals.mean()
+
+	
+	# Building out the Analysis of each category page
+	if selection == "Analysis of each category":
+		st.write("## Analysis of Individual Categories")
+		st.info("Select a category from the dropdown menu for a more detailed analysis.")
+
+		# Select category of which user would like to view data
+		category = st.selectbox("Select category",
+							['Deniers', 'Neutrals',
+							'Believers', 'Factuals'])
+		
+		st.write("### Most frequent n-grams")
+		st.write("n-grams refer to a sequence of n consecutive items. In this case, it"+
+				 " refers to a n consecutive words in a text. The most common bigrams (two words) and"+
+				 " trigrams (three words) were counted in the training data. These show the most frequently"+
+				 " used sets of two and three words by each category.")
+
+		if category == 'Deniers':
+			st.write('#### Most common bigrams and trigrams of climate change deniers')
+			st.write(ngrams_deniers)
+			st.write("In this dataset, climate change deniers seem to tend to retweet Donald Trump "+
+			"and Twitter user @SteveSGoddard, who has since changed his username to [@Tony__Heller](https://twitter.com/Tony__Heller).")
+			st.write("These ngrams suggest that climate change deniers may be aligned towards right-wing politics.")
+			st.write('### Metrics')
+			st.write("Average word count per tweet: ", round(avg_word_count_deniers, 2))
+			st.write("Average tweet length: ", round(avg_t_length_deniers, 2))
+			st.write("Average word length: ", round(avg_w_length_deniers, 2))
+
+		if category == 'Neutrals':
+			st.write('#### Most common bigrams and trigrams of climate change neutrals')
+			st.write(ngrams_neutrals)
+			st.write('### Metrics')
+			st.write("Average word count per tweet: ", round(avg_word_count_neutrals, 2))
+			st.write("Average tweet length: ", round(avg_t_length_neutrals, 2))
+			st.write("Average word length: ", round(avg_w_length_neutrals, 2))
+
+		if category == 'Believers':
+			st.write('#### Most common bigrams and trigrams of climate change believers')
+			st.write(ngrams_believers)
+			st.write('In this dataset, climate change believers seem to frequently tweet about dying.')
+			st.write('### Metrics')
+			st.write("Average word count per tweet: ", round(avg_word_count_believers, 2))
+			st.write("Average tweet length: ", round(avg_t_length_believers, 2))
+			st.write("Average word length: ", round(avg_w_length_believers, 2))
+			# fig = sns.boxplot(word_count_believers)
+			# st.pyplot()
+			
+			
+
+		if category == 'Factuals':
+			st.write('#### Most common bigrams and trigrams of those who provided factual links')
+			st.write(ngrams_factuals)
+			st.write('### Metrics')
+			st.write("Average word count per tweet: ", round(avg_word_count_factuals, 2))
+			st.write("Average tweet length: ", round(avg_t_length_factuals, 2))
+			st.write("Average word length: ", round(avg_w_length_factuals, 2))
+		
 
 # Required to let Streamlit instantiate our web app.  
 if __name__ == '__main__':
